@@ -1,5 +1,6 @@
 import socket
 import thread
+import select
 
 class Server(object):
     """
@@ -47,7 +48,7 @@ class Server(object):
         if valid == 1:
             return [1, username]
         else:
-            self.server_auth(c, addr, attempts-1)
+            return self.server_auth(c, addr, attempts-1)
 
     def client_thread(self, client, addr, username):
         """
@@ -60,15 +61,39 @@ class Server(object):
                     print(username + " sent: ", msg)
                     recver, msg = msg.strip().split(">")
                     if recver.strip() == 'broadcast':
-                        # code to broadcast message to all users
+                        # broadcast message to all users
                         # print("broadcast message")
                         for client in self.active_clients.keys():
                             if client != username:
-                                self.active_clients[client].send(msg)
+                                self.active_clients[client].send(msg.strip())
                                 
                     else:
-                        # code to send message to a specified username
-                        pass
+                        # send message to a specified username
+                        try:
+                            recver = recver.strip()
+                            recv_sock = self.active_clients[recver]
+                            print("recv_sock: ", recv_sock)
+                            # read_sock, write_sock, _ = select.select(
+                            #     [recv_sock], [], [], 2)
+                            bytes_sent = recv_sock.send(msg.strip())
+                            if bytes_sent > 0:
+                                print("msg sent to user " + recver)
+                            else:
+                                print("user " + recver + " is offline")
+                                self.active_clients.pop(recver, None)
+                        except:
+                            print("msg couldn't be sent to user " + recver)
+                            fid = open(self.auth_file, "r")
+                            found = 0
+                            for line in fid.readlines():
+                                un, pw = line.strip().split(" ")
+                                if un == recver:
+                                    print("user " + un + " is offline")
+                                    found = 1
+                                    break
+                                    # code to send message to recver offline
+                            if found == 0:
+                                print("user " + recver + " doesn't exist")
             except:
                 continue
         return 0
