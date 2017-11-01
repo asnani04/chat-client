@@ -9,6 +9,7 @@ class Server(object):
     def __init__(self, port):
         self.s = socket.socket()
         self.port = port
+        self.active_clients = {}
 
     def connect(self, auth_file):
         self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -56,7 +57,18 @@ class Server(object):
             try:
                 msg = client.recv(1024)
                 if msg:
-                    print("client sent: ", msg)
+                    print(username + " sent: ", msg)
+                    recver, msg = msg.strip().split(">")
+                    if recver.strip() == 'broadcast':
+                        # code to broadcast message to all users
+                        # print("broadcast message")
+                        for client in self.active_clients.keys():
+                            if client != username:
+                                self.active_clients[client].send(msg)
+                                
+                    else:
+                        # code to send message to a specified username
+                        pass
             except:
                 continue
         return 0
@@ -71,11 +83,12 @@ class Server(object):
             if auth[0] == 1:
                 print("Client successfully authenticated")
                 c.send("Authenticated")
+                self.active_clients[auth[1]] = c
                 thread.start_new_thread(self.client_thread, (c, addr, auth[1]))
             else:
                 # do something to stop the ip from trying to log in for some time
                 c.send("Authentication failed")
-                c.close()
+                continue
         c.close()
         self.s.close()
 

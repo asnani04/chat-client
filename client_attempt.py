@@ -1,4 +1,6 @@
 import socket
+import select
+import sys
 
 s = socket.socket()
 
@@ -23,12 +25,22 @@ print(s.recv(1024))
 s.send("Thanks.")
 auth = client_auth(s)
 if auth:
+    # this part of the code is inspired by
+    # http://www.geeksforgeeks.org/simple-chat-room-using-python/
     while True:
-        msg = raw_input()
-        print(msg)
-        if len(msg) > 2:
-            s.send(msg)
-        else:
-            break
+        recv_from = [s, sys.stdin]
+        read_socks, write_socks, _ = select.select(recv_from, [], [])
+
+        for sock in read_socks:
+            if sock == s:
+                msg = sock.recv(1024)
+                print("<server> ", msg)
+            else:
+                msg = sys.stdin.readline()
+                if len(msg) > 2:
+                    print("<me> ", msg)
+                    s.send(msg)
+                else:
+                    break
             
 s.close()
