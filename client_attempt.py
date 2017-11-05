@@ -36,13 +36,13 @@ def client_func(auth, s):
             for sock in read_socks:
                 if sock == s:
                     msg = sock.recv(1024)
-                    print("<server> ", msg)
+                    print(msg)
                 else:
                     msg = sys.stdin.readline()
                     if msg.strip() == 'exit':
                         return
                     elif len(msg) > 2:
-                        print("<me> ", msg)
+                        # print("<me> " + str(msg))
                         s.send(msg)
                 
 

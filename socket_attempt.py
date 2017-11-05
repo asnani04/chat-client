@@ -1,6 +1,7 @@
 import socket
 import thread
 import select
+import os
 
 class Server(object):
     """
@@ -8,7 +9,7 @@ class Server(object):
     """
 
     def __init__(self, port):
-        self.s = socket.socket()
+        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.port = port
         self.active_clients = {}
 
@@ -54,40 +55,48 @@ class Server(object):
         """
         Separate thread for each client connected to the chat room
         """
+        filename = username + ".txt"
+        if os.path.isfile("./" + filename):
+            fid_un = open(username + ".txt", "r")
+            for line in fid_un.readlines():
+                client.send(line)
+            fid_un.close()
+            
         while True:
             try:
                 msg = client.recv(1024)
-                if msg:
+                if not msg:
+                    client.close()
+                    print("user " + username + " is offline") 
+                    self.active_clients.pop(username, None)
+                    break
+                else:
                     print(username + " sent: ", msg)
                     recver, msg = msg.strip().split(">")
                     if recver.strip() == 'broadcast':
                         # broadcast message to all users
-                        # print("broadcast message")
                         for client in self.active_clients.keys():
                             if client != username:
                                 self.active_clients[client].send(msg.strip())
                                 
                     else:
                         # send message to a specified username
-                        try:
-                            recver = recver.strip()
+                        recver = recver.strip()
+                        if recver in self.active_clients:
                             recv_sock = self.active_clients[recver]
-                            print("recv_sock: ", recv_sock)
-                            # read_sock, write_sock, _ = select.select(
-                            #     [recv_sock], [], [], 2)
-                            bytes_sent = recv_sock.send(msg.strip())
-                            if bytes_sent > 0:
-                                print("msg sent to user " + recver)
-                            else:
-                                print("user " + recver + " is offline")
-                                self.active_clients.pop(recver, None)
-                        except:
+                            msg = username + " > " + msg.strip()
+                            bytes_sent = recv_sock.send(msg)
+                        else:
                             print("msg couldn't be sent to user " + recver)
                             fid = open(self.auth_file, "r")
                             found = 0
                             for line in fid.readlines():
                                 un, pw = line.strip().split(" ")
                                 if un == recver:
+                                    fid_un = open(un + ".txt", "a")
+                                    fid_un.write(
+                                        username + " > " + msg.strip() + "\n")
+                                    fid_un.close()
                                     print("user " + un + " is offline")
                                     found = 1
                                     break
