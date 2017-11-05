@@ -12,6 +12,7 @@ class Server(object):
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.port = port
         self.active_clients = {}
+        self.block_list = {}
 
     def connect(self, auth_file):
         self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -55,13 +56,15 @@ class Server(object):
         """
         Separate thread for each client connected to the chat room
         """
+        # display messages that came when this user was offline
         filename = username + ".txt"
         if os.path.isfile("./" + filename):
             fid_un = open(username + ".txt", "r")
             for line in fid_un.readlines():
                 client.send(line)
             fid_un.close()
-            
+        open(filename, "w").close()
+        # check for incoming messages and send outgoing messages
         while True:
             try:
                 msg = client.recv(1024)
@@ -72,19 +75,57 @@ class Server(object):
                     break
                 else:
                     print(username + " sent: ", msg)
-                    recver, msg = msg.strip().split(">")
+                    long_msg = msg.strip().split(">")
+                    if len(long_msg) == 2:
+                        recver, msg = long_msg[0], long_msg[1]
+                    else:
+                        recver, msg = "", long_msg[0]
                     if recver.strip() == 'broadcast':
                         # broadcast message to all users
                         for client in self.active_clients.keys():
                             if client != username:
                                 self.active_clients[client].send(msg.strip())
-                                
+
+                    # loop to take care of whoelse messages
+                    elif msg.strip() == "whoelse":
+                        for user in self.active_clients.keys():
+                            if user != username:
+                                client.send("user " + user + " is active.\n")
+
+                    # request to block a user
+                    elif msg.split(" ")[0].strip() == "block":
+                        cmd, tgt = msg.split(" ")
+                        print("blocking a user " + tgt.strip())
+                        if username in self.block_list:
+                            self.block_list[username].append(tgt.strip())
+                        else:
+                            self.block_list[username] = [tgt.strip()]
+                        client.send("user " + tgt + " has been blocked.\n")
+
+                    # request to unblock a user
+                    elif msg.split(" ")[0].strip() == "unblock":
+                        cmd, tgt = msg.split(" ")
+                        if username in self.block_list:
+                            print("unblocking " + tgt.strip())
+                            self.block_list[username].remove(tgt.strip())
+                            client.send(
+                                "user " + tgt + " has been unblocked.\n")
+                        else:
+                            client.send(
+                                "user " + tgt + " was already unblocked.\n")
+                        
                     else:
                         # send message to a specified username
                         recver = recver.strip()
+                        if recver in self.block_list:
+                            if username in self.block_list[recver]:
+                                client.send(
+                                    "Sorry, user " + recver + " has blocked you from sending messages to them.\n")
+                                continue
+                            
                         if recver in self.active_clients:
                             recv_sock = self.active_clients[recver]
-                            msg = username + " > " + msg.strip()
+                            msg = username + " > " + msg.strip()    
                             bytes_sent = recv_sock.send(msg)
                         else:
                             print("msg couldn't be sent to user " + recver)
