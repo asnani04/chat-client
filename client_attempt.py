@@ -6,9 +6,10 @@ s = socket.socket()
 
 def client_auth(s):
     msg = s.recv(1024)
-    if msg == "Authenticated":
+    print(msg)
+    if "Authenticated" in msg:
         return 1
-    elif msg == "Authentication failed":
+    elif "Authentication failed" in msg:
         return 0
     print(msg)
     username = raw_input()

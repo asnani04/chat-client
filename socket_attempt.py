@@ -2,6 +2,7 @@ import socket
 import thread
 import select
 import os
+import time
 
 class Server(object):
     """
@@ -13,6 +14,8 @@ class Server(object):
         self.port = port
         self.active_clients = {}
         self.block_list = {}
+        self.blocked_conns = {}
+        self.last_login = {}
 
     def connect(self, auth_file):
         self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -25,6 +28,8 @@ class Server(object):
         Check if the username, password corresponds to a valid user
         returns: 1 if such a user is found, 0 if not
         """
+        if username in self.active_clients:
+            return 0
         fid = open(self.auth_file, "r")
         for line in fid.readlines():
             un, pw = line.strip().split(" ")
@@ -70,7 +75,8 @@ class Server(object):
                 msg = client.recv(1024)
                 if not msg:
                     client.close()
-                    print("user " + username + " is offline") 
+                    print("user " + username + " is offline")
+                    self.last_login[username] = time.time()
                     self.active_clients.pop(username, None)
                     break
                 else:
@@ -92,6 +98,12 @@ class Server(object):
                             if user != username:
                                 client.send("user " + user + " is active.\n")
 
+                    elif msg.strip() == "wholasthr":
+                        print("who last here called.", self.last_login)
+                        for user in self.last_login:
+                            print(user)
+                            if self.last_login[user] + 3600.0 > time.time():
+                                client.send("user " + user + " was active within the last one hour.")
                     # request to block a user
                     elif msg.split(" ")[0].strip() == "block":
                         cmd, tgt = msg.split(" ")
@@ -125,8 +137,9 @@ class Server(object):
                             
                         if recver in self.active_clients:
                             recv_sock = self.active_clients[recver]
-                            msg = username + " > " + msg.strip()    
+                            msg = username + " sent '" + msg.strip() + "'"    
                             bytes_sent = recv_sock.send(msg)
+                            client.send("Message delivered to " + recver + ".")
                         else:
                             print("msg couldn't be sent to user " + recver)
                             fid = open(self.auth_file, "r")
@@ -136,14 +149,18 @@ class Server(object):
                                 if un == recver:
                                     fid_un = open(un + ".txt", "a")
                                     fid_un.write(
-                                        username + " > " + msg.strip() + "\n")
+                                        username + " sent '" + msg.strip() + "'\n")
                                     fid_un.close()
                                     print("user " + un + " is offline")
+                                    offline_msg = "user " + un + " is offline. Your message will be delivered as soon as they come online."
+                                    client.send(offline_msg)
                                     found = 1
                                     break
                                     # code to send message to recver offline
                             if found == 0:
-                                print("user " + recver + " doesn't exist")
+                                no_exist_msg = "user " + recver + " doesn't exist"
+                                print(no_exist_msg)
+                                client.send(no_exist_msg)
             except:
                 continue
         return 0
@@ -152,16 +169,23 @@ class Server(object):
         while True:
             c, addr = self.s.accept()
             print("accepted connection from " + str(addr))
+            if addr[0] in self.blocked_conns:
+                if time.time() <= 20.0 + self.blocked_conns[addr[0]]:
+                    c.send("You have been blocked. Please try again later.")
+                    continue
+                else:
+                    self.blocked_conns.pop(addr[0], None)
             c.send("You have been connected to the server.")
             print(c.recv(1024))
             auth = self.server_auth(c, addr);
             if auth[0] == 1:
                 print("Client successfully authenticated")
-                c.send("Authenticated")
+                c.send("Authenticated.\nPlease send user > msg to send msg to user.")
                 self.active_clients[auth[1]] = c
                 thread.start_new_thread(self.client_thread, (c, addr, auth[1]))
             else:
                 # do something to stop the ip from trying to log in for some time
+                self.blocked_conns[addr[0]] = time.time()
                 c.send("Authentication failed")
                 continue
         c.close()
