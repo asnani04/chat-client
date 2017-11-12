@@ -3,6 +3,63 @@ import thread
 import select
 import os
 import time
+import numpy as np
+
+class Game(object):
+    """
+    A tic-tac-toe game
+    """
+    def __init__(self, p1, p2):
+        self.players = [p1, p2]
+        self.state = np.zeros([3, 3], dtype=np.float32)
+        self.turn = 0
+
+    def move(self, player, row, col):
+        """
+        player plays a move at [row, col]
+        """
+        row, col = int(row), int(col)
+        if self.turn != self.players.index(player.strip()):
+            return 0
+        if row not in range(0, 3):
+            return 0
+        if col not in range(0, 3):
+            return 0
+        if player not in self.players:
+            return 0
+        if self.state[row][col] != 0:
+            return 0
+        p_id = self.players.index(player)
+        if p_id == 0:
+            self.state[row, col] = 1.0
+        else:
+            self.state[row, col] = -1.0
+        self.turn = 1 - self.turn
+        return 1
+
+    def check_for_victory(self):
+        """
+        check if some player has already won the game
+        """
+        sums = []
+        sums.extend(np.sum(self.state, 0))
+        sums.extend(np.sum(self.state, 1))
+        sums.append(np.sum(np.diagonal(self.state)))
+        sums.append(np.trace(np.flip(self.state, 1)))
+        if 3.0 in sums:
+            return self.players[0]
+        elif -3.0 in sums:
+            return self.players[1]
+        return "not ended"
+
+    def to_string(self):
+        """
+        Send the game state as a string.
+        """
+        game_as_string = str(self.state[0,0]) + " | " + str(self.state[0,1]) + " | " + str(self.state[0,2]) + "\n"
+        game_as_string = game_as_string + str(self.state[1,0]) + " | " + str(self.state[1,1]) + " | " + str(self.state[1,2]) + "\n"
+        game_as_string = game_as_string + str(self.state[2,0]) + " | " + str(self.state[2,1]) + " | " + str(self.state[2,2])
+        return game_as_string
 
 class Server(object):
     """
@@ -16,6 +73,7 @@ class Server(object):
         self.block_list = {}
         self.blocked_conns = {}
         self.last_login = {}
+        self.games = {}
 
     def connect(self, auth_file):
         self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -88,9 +146,9 @@ class Server(object):
                         recver, msg = "", long_msg[0]
                     if recver.strip() == 'broadcast':
                         # broadcast message to all users
-                        for client in self.active_clients.keys():
-                            if client != username:
-                                self.active_clients[client].send(msg.strip())
+                        for cl in self.active_clients.keys():
+                            if cl != username:
+                                self.active_clients[cl].send(msg.strip())
 
                     # loop to take care of whoelse messages
                     elif msg.strip() == "whoelse":
@@ -104,6 +162,70 @@ class Server(object):
                             print(user)
                             if self.last_login[user] + 3600.0 > time.time():
                                 client.send("user " + user + " was active within the last one hour.")
+
+                    elif "playgame" in msg.strip():
+                        blocks = msg.split(" ")
+                        if len(blocks) == 3:
+                            tgt, ans = blocks[1].strip(), blocks[2].strip()
+                            if tgt not in self.active_clients:
+                                client.send(tgt + " has gone offline. Maybe some other time.")
+                                continue
+                            if ans == "yes":
+                                game = Game(tgt, username)
+                                self.games[tgt + "," + username] = game
+                                tgtmsg = username + " has agreed for a game with you. Let it begin!"
+                                self.active_clients[tgt].send(tgtmsg)
+                                tgtmsg = "To make a move, send 'move <row> <col> <opponent>' to make your mark at [row, col]"
+                                self.active_clients[tgt].send(tgtmsg)
+                                srcmsg = "Acknowledgement sent to " + tgt
+                                client.send(srcmsg)
+                            else:
+                                self.active_clients[tgt].send("Sorry, your game request was not approved.")
+                        elif len(blocks) == 2:
+                            tgt = msg.split(" ")[1].strip()
+                            print(username + " wants to start a game with " + tgt)
+                            if tgt in self.active_clients:
+                                tgtmsg = username + " wants to start a game with you. Are you in for it? (playgame " + username + " yes/no)" 
+                                self.active_clients[tgt].send(tgtmsg)
+                                srcmsg = "Your request for a game has been sent to " + tgt
+                                client.send(srcmsg)
+                            else:
+                                client.send("This user is either offline or does not exist.")
+
+                    elif "move" in msg.strip():
+                        command, row, col, tgt = msg.split(" ")
+                        row, col, tgt = row.strip(), col.strip(), tgt.strip()
+                        game_str = username + "," + tgt
+                        if game_str not in self.games:
+                            game_str = tgt + "," + username
+                        if game_str not in self.games:
+                            client.send("Sorry, no such game exists. Send playgame <player> to start a game with 'player'.")
+                            continue
+                        result_move = self.games[game_str].move(username, row, col)
+                        if result_move == 0:
+                            client.send("Sorry, this move could not be played. Make a separate move.")
+                            client.send(self.games[game_str].to_string())
+                        else:
+                            client.send("Move played.")
+                            client.send(self.games[game_str].to_string())
+                            print tgt
+                            
+                            victory = self.games[game_str].check_for_victory()
+                            print victory
+                            tgt = tgt.strip()
+                            if tgt.strip() in self.active_clients:
+                                print("tgt exists, ", tgt)
+                                # self.active_clients[tgt].send(" test message for a move.")
+                                self.active_clients[tgt].send(username + " played a move.")
+                                self.active_clients[tgt].send(self.games[game_str].to_string())
+                                self.active_clients[tgt].send("To make a move, send 'move <row> <col> <opponent>' to make your mark at [row, col]")
+                                if victory != "not ended":
+                                    self.active_clients[tgt].send(username + " has already won. Better luck next time.")
+                            if victory == username:
+                                client.send("Congratulations! You have won.")
+                                self.games.pop(game_str, None)
+                        
+                        
                     # request to block a user
                     elif msg.split(" ")[0].strip() == "block":
                         cmd, tgt = msg.split(" ")
