@@ -96,6 +96,13 @@ class Server(object):
                 return 1
         return 0
     
+    def create_account(self, username, passwd):
+        """
+        Create the username, password
+        """
+        with open(self.auth_file, "a") as f:
+            f.write(username + ' ' + passwd + '\n')
+
     def server_auth(self, c, addr, attempts=3):
         """
         Authentication handled by the server. attempts indicates the number of 
@@ -103,12 +110,19 @@ class Server(object):
         """
         if attempts == 0:
             return [0, '']
+        c.send("Would you like to create new account[Y|N]")
+        resp = c.recv(1)
+        print(resp, type(resp))
         c.send("Please enter your username.")
         username = c.recv(1024)
         print(username)
         c.send("Please enter your password.")
         passwd = c.recv(1024)
         print(passwd)
+        if resp == "Y":
+            self.create_account(username, passwd)
+            print("voila")
+            return [1, username]
         valid = self.auth_check(username, passwd)
         if valid == 1:
             return [1, username]

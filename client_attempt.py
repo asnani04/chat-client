@@ -11,6 +11,12 @@ def client_auth(s):
         return 1
     elif "Authentication failed" in msg:
         return 0
+    res = raw_input()
+    while (res is not 'Y') and (res is not 'N'):
+        res = raw_input("Please answer Y or N\n")
+    if res is 'Y': s.send("Y")
+    else: s.send("N")
+    msg = s.recv(1024)
     print(msg)
     username = raw_input()
     s.send(username)
