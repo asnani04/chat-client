@@ -302,6 +302,7 @@ class Server(object):
                                 print(no_exist_msg)
                                 client.send(no_exist_msg)
             except:
+                client.send("Sorry, that could not be understood. Please try again.")
                 continue
         return 0
         
