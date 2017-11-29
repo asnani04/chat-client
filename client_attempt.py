@@ -27,7 +27,7 @@ def client_auth(s):
     return client_auth(s)
 
 port = 10101
-s.connect(('127.0.0.1', port))
+s.connect(('172.24.194.168', port))
 print(s.recv(1024))
 s.send("Thanks.")
 auth = client_auth(s)

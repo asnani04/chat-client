@@ -77,7 +77,7 @@ class Server(object):
 
     def connect(self, auth_file):
         self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.s.bind(('', self.port))
+        self.s.bind(('0.0.0.0', self.port))
         self.s.listen(5)
         self.auth_file = auth_file
 
