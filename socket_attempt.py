@@ -150,6 +150,10 @@ class Server(object):
                     print("user " + username + " is offline")
                     self.last_login[username] = time.time()
                     self.active_clients.pop(username, None)
+                    for game in self.games:
+                        if username in self.games[game].players:
+                            self.games.pop(game, None)
+                            continue
                     break
                 else:
                     print(username + " sent: ", msg)
